@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TrackVA</title>
+  <meta name="description" content="Minimal PWA to manage your Virtual Assistant: tasks, time logs, daily check-ins." />
+
+  <!-- PWA manifest -->
+  <link rel="manifest" href='data:application/manifest+json,{
+    "name":"TrackVA",
+    "short_name":"TrackVA",
+    "start_url":".",
+    "display":"standalone",
+    "background_color":"#0f172a",
+    "theme_color":"#0f172a",
+    "icons":[{"src":"https://fav.farm/%E2%9A%99%EF%B8%8F","sizes":"192x192","type":"image/png"}]
+  }'>
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="apple-touch-icon" href="https://fav.farm/%E2%9A%99%EF%B8%8F" />
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Supabase JS (v2 UMD build exposes window.supabase.createClient) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+  <style>
+    .card{ @apply bg-slate-900/60 backdrop-blur rounded-2xl p-4 shadow-lg border border-slate-800; }
+    .btn{ @apply px-4 py-2 rounded-xl font-medium shadow hover:opacity-90 active:scale-95; }
+    .btn-primary{ @apply bg-indigo-600 text-white; }
+    .btn-ghost{ @apply bg-slate-800 text-slate-200; }
+    .input{ @apply w-full bg-slate-800/70 text-slate-100 rounded-xl px-3 py-2 outline-none border border-slate-700 focus:border-indigo-500; }
+    .label{ @apply text-slate-300 text-sm mb-1; }
+    .tab{ @apply px-3 py-2 rounded-xl hover:bg-slate-800 cursor-pointer; }
+    .active-tab{ @apply bg-indigo-600 text-white; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100">
+
+  <header class="sticky top-0 z-20 border-b border-slate-800 bg-slate-950/85 backdrop-blur">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">⚙️</span>
+        <h1 class="font-bold text-lg">TrackVA</h1>
+      </div>
+      <div id="authBox" class="text-sm"></div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- Auth Card -->
+    <section id="authCard" class="card">
+      <h2 class="text-xl font-semibold mb-4">Sign in</h2>
+      <p class="text-slate-300 mb-3">
+        Use your email to receive a magic link. First user can become
+        <span class="font-semibold">owner</span>; invite your VA later.
+      </p>
+      <div class="grid sm:grid-cols-[1fr_auto] gap-3">
+        <input id="email" type="email" class="input" placeholder="you@example.com" />
+        <button id="magicBtn" class="btn btn-primary">Send Magic Link</button>
+      </div>
+      <p id="authMsg" class="text-sm text-emerald-400 mt-2 hidden"></p>
+    </section>
+
+    <!-- App Tabs -->
+    <nav id="nav" class="hidden card flex items-center gap-2">
+      <button class="tab active-tab" data-tab="tasks">Tasks</button>
+      <button class="tab" data-tab="time">Time Logs</button>
+      <button class="tab" data-tab="checkins">Daily Check-ins</button>
+      <button class="tab" data-tab="report">Report</button>
+    </nav>
+
+    <!-- TASKS -->
+    <section id="tasks" class="card hidden">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold">Tasks</h2>
+        <button id="newTaskBtn" class="btn btn-primary">New Task</button>
+      </div>
+      <div id="taskList" class="space-y-3"></div>
+    </section>
+
+    <!-- TIME LOGS -->
+    <section id="time" class="card hidden">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold">Time Logs</h2>
+        <div class="space-x-2">
+          <button id="startTimer" class="btn btn-primary">Start</button>
+          <button id="stopTimer" class="btn btn-ghost">Stop</button>
+        </div>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label class="label">Task (optional)</label>
+          <input id="timeTaskId" class="input" placeholder="Paste task ID to link" />
+        </div>
+        <div>
+          <label class="label">Notes</label>
+          <input id="timeNotes" class="input" placeholder="What are you working on?" />
+        </div>
+      </div>
+      <p id="timerStatus" class="mt-3 text-sm text-slate-400">Timer idle.</p>
+      <hr class="my-4 border-slate-800" />
+      <div id="timeList" class="space-y-3"></div>
+    </section>
+
+    <!-- CHECK-INS -->
+    <section id="checkins" class="card hidden">
+      <h2 class="text-xl font-semibold mb-4">Daily Check-in</h2>
+      <div class="grid gap-3 md:grid-cols-2">
+        <div>
+          <label class="label">Mood</label>
+          <input id="mood" class="input" placeholder="🙂 Great / 😐 Okay / 😵 Tired" />
+        </div>
+        <div>
+          <label class="label">Plan for today</label>
+          <input id="plan" class="input" placeholder="Top 3 things" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="label">What I did</label>
+          <textarea id="what" class="input" rows="3" placeholder="Summary"></textarea>
+        </div>
+        <div class="md:col-span-2">
+          <label class="label">Blockers</label>
+          <textarea id="blockers" class="input" rows="2" placeholder="Anything slowing you down?"></textarea>
+        </div>
+      </div>
+      <div class="mt-3 flex gap-2">
+        <button id="saveCheckin" class="btn btn-primary">Save Check-in</button>
+        <button id="refreshCheckins" class="btn btn-ghost">Refresh</button>
+      </div>
+      <div id="checkinList" class="mt-4 space-y-3"></div>
+    </section>
+
+    <!-- REPORT -->
+    <section id="report" class="card hidden">
+      <h2 class="text-xl font-semibold mb-4">Simple Report</h2>
+      <p class="text-slate-300 mb-3">
+        Shows your tasks, time totals this week, and latest check-ins.
+      </p>
+      <div id="reportBox" class="space-y-3"></div>
+    </section>
+
+    <footer class="text-center text-slate-500 text-sm py-6">
+      TrackVA • Minimal VA tracker • PWA • Supabase
+    </footer>
+  </main>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      // ====== CONFIG ======
+      const SUPABASE_URL = "https://uilchgjatysericublae.supabase.co";
+      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVpbGNoZ2phdHlzZXJpY3VibGFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxNjI1NDAsImV4cCI6MjA3NzczODU0MH0.3pR3Mjun92j-i5J1-8tiU0WeW28lJsrdrS2AgEgx1p4";
+      // ========================================================
+
+      if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+        console.error('Supabase client not loaded. Check the CDN script tag URL.');
+        alert('Supabase SDK failed to load. Please check your internet connection and Supabase script tag.');
+        return;
+      }
+
+      const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      let currentUser = null;
+      let activeTimer = null; // { start: Date, task_id, notes }
+
+      // UI helpers
+      const $ = (id) => document.getElementById(id);
+      const show = (el) => el.classList.remove('hidden');
+      const hide = (el) => el.classList.add('hidden');
+      const notify = (msg, ok = true) => {
+        const n = document.createElement('div');
+        n.className = `fixed bottom-4 right-4 z-50 px-4 py-2 rounded-xl shadow-lg ${ok ? 'bg-emerald-600' : 'bg-rose-600'} text-white`;
+        n.textContent = msg;
+        document.body.appendChild(n);
+        setTimeout(() => n.remove(), 2200);
+      };
+
+      // Auth
+      async function refreshAuthUI() {
+        const { data: { user } = { user: null } } = await supabase.auth.getUser();
+        currentUser = user;
+        if (!user) {
+          show($("authCard"));
+          hide($("nav"));
+          ["tasks", "time", "checkins", "report"].forEach((id) => hide($(id)));
+          $("authBox").innerHTML = "";
+        } else {
+          hide($("authCard"));
+          show($("nav"));
+          $("authBox").innerHTML =
+            `<span class="mr-3 text-slate-300">${user.email}</span><button id="signOut" class="btn btn-ghost">Sign out</button>`;
+          document.getElementById('signOut').onclick = async () => {
+            await supabase.auth.signOut();
+            location.reload();
+          };
+          // Ensure a profile exists (idempotent)
+          await ensureProfile();
+          // Load default tab
+          switchTab('tasks');
+        }
+      }
+
+      async function ensureProfile() {
+        if (!currentUser) return;
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .maybeSingle();
+        if (error) {
+          console.warn(error);
+        }
+        if (!data) {
+          await supabase.from('profiles').insert({
+            user_id: currentUser.id,
+            full_name: currentUser.email,
+            role: 'owner',
+          });
+        }
+      }
+
+      $("magicBtn").addEventListener('click', async () => {
+        const email = $("email").value.trim();
+        if (!email) return notify('Enter your email', false);
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: window.location.href },
+        });
+        if (error) {
+          notify(error.message, false);
+          return;
+        }
+        const m = $("authMsg");
+        m.textContent = 'Check your inbox for the sign-in link.';
+        m.classList.remove('hidden');
+      });
+
+      // Tabs
+      function switchTab(id) {
+        document.querySelectorAll('nav .tab').forEach((btn) => {
+          if (btn.dataset.tab === id) {
+            btn.classList.add('active-tab');
+          } else {
+            btn.classList.remove('active-tab');
+          }
+        });
+        ["tasks", "time", "checkins", "report"].forEach((x) =>
+          x === id ? show($(x)) : hide($(x))
+        );
+        if (id === 'tasks') loadTasks();
+        if (id === 'time') loadTimeLogs();
+        if (id === 'checkins') loadCheckins();
+        if (id === 'report') buildReport();
+      }
+
+      // Nav click
+      $("nav").addEventListener('click', (e) => {
+        if (e.target.matches('.tab')) switchTab(e.target.dataset.tab);
+      });
+
+      // ===== Tasks =====
+      async function loadTasks() {
+        if (!currentUser) return;
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .maybeSingle();
+        const isOwner = prof?.role === 'owner';
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (error) {
+          notify(error.message, false);
+          return;
+        }
+        const list = $("taskList");
+        list.innerHTML = '';
+        (data || []).forEach((t) => {
+          const card = document.createElement('div');
+          card.className = 'p-3 rounded-xl bg-slate-800 border border-slate-700';
+          card.innerHTML = `
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="font-semibold">${t.title}</div>
+                <div class="text-sm text-slate-400">${t.description ?? ''}</div>
+                <div class="text-xs text-slate-500 mt-1">ID: ${t.id} • Status: ${t.status} • Due: ${t.due_date ?? '—'}</div>
+              </div>
+              <div class="space-x-2">
+                <select class="input inline w-auto" data-id="${t.id}" data-role="status">
+                  ${['todo', 'in_progress', 'blocked', 'done']
+                    .map(
+                      (s) => `<option ${s === t.status ? 'selected' : ''}>${s}</option>`
+                    )
+                    .join('')}
+                </select>
+                ${isOwner
+                  ? `<button class="btn btn-ghost" data-id="${t.id}" data-role="delete">Delete</button>`
+                  : ''}
+              </div>
+            </div>`;
+          list.appendChild(card);
+        });
+      }
+
+      $("newTaskBtn").onclick = async () => {
+        if (!currentUser) return notify('Not signed in', false);
+        const title = prompt('Task title');
+        if (!title) return;
+        const description = prompt('Description (optional)') || null;
+        const due = prompt('Due date (YYYY-MM-DD) (optional)') || null;
+        // Pick assignee: default to current user for demo; change to your VA by pasting their user_id
+        const assignee_id =
+          prompt(
+            'Assignee user_id (paste VA uid from Supabase Auth Users). Leave blank to assign to yourself.'
+          ) || currentUser.id;
+        const { error } = await supabase.from('tasks').insert({
+          owner_id: currentUser.id,
+          assignee_id,
+          title,
+          description,
+          due_date: due,
+        });
+        if (error) {
+          notify(error.message, false);
+        } else {
+          notify('Task added');
+          loadTasks();
+        }
+      };
+
+      // Delegate task actions
+      $("tasks").addEventListener('change', async (e) => {
+        if (e.target.dataset.role === 'status') {
+          const id = e.target.dataset.id;
+          const status = e.target.value;
+          const { error } = await supabase
+            .from('tasks')
+            .update({ status })
+            .eq('id', id);
+          if (error) notify(error.message, false);
+          else notify('Status updated');
+        }
+      });
+
+      $("tasks").addEventListener('click', async (e) => {
+        if (e.target.dataset.role === 'delete') {
+          const id = e.target.dataset.id;
+          if (!confirm('Delete this task?')) return;
+          const { error } = await supabase.from('tasks').delete().eq('id', id);
+          if (error) {
+            notify(error.message, false);
+          } else {
+            notify('Task deleted');
+            loadTasks();
+          }
+        }
+      });
+
+      // ===== Time Logs =====
+      $("startTimer").onclick = () => {
+        if (!currentUser) return notify('Not signed in', false);
+        if (activeTimer) {
+          notify('Timer already running', false);
+          return;
+        }
+        activeTimer = {
+          start: new Date(),
+          task_id: $("timeTaskId").value.trim() || null,
+          notes: $("timeNotes").value.trim() || null,
+        };
+        $("timerStatus").textContent =
+          `Started at ${activeTimer.start.toLocaleTimeString()}`;
+      };
+
+      $("stopTimer").onclick = async () => {
+        if (!currentUser) return notify('Not signed in', false);
+        if (!activeTimer) {
+          notify('No active timer', false);
+          return;
+        }
+        const ended = new Date();
+        const payload = {
+          user_id: currentUser.id,
+          task_id: activeTimer.task_id || null,
+          started_at: activeTimer.start.toISOString(),
+          ended_at: ended.toISOString(),
+          notes: activeTimer.notes,
+        };
+        const { error } = await supabase.from('time_logs').insert(payload);
+        activeTimer = null;
+        if (error) {
+          notify(error.message, false);
+        } else {
+          notify('Time saved');
+          $("timerStatus").textContent = 'Timer idle.';
+          loadTimeLogs();
+        }
+      };
+
+      async function loadTimeLogs() {
+        if (!currentUser) return;
+        const { data, error } = await supabase
+          .from('time_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (error) {
+          notify(error.message, false);
+          return;
+        }
+        const wrap = $("timeList");
+        wrap.innerHTML = '';
+        (data || []).forEach((r) => {
+          const mins = r.ended_at
+            ? Math.round((new Date(r.ended_at) - new Date(r.started_at)) / 60000)
+            : 0;
+          const div = document.createElement('div');
+          div.className = 'p-3 rounded-xl bg-slate-800 border border-slate-700';
+          div.innerHTML = `<div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm">${new Date(r.started_at).toLocaleString()} → ${
+                r.ended_at ? new Date(r.ended_at).toLocaleTimeString() : '…'
+              }</div>
+              <div class="text-xs text-slate-400">Task: ${r.task_id || '—'} • ${mins} min • ${
+                r.notes || ''
+              }</div>
+            </div>
+            <button class="btn btn-ghost" data-del="${r.id}">Delete</button>
+          </div>`;
+          wrap.appendChild(div);
+        });
+      }
+
+      $("time").addEventListener('click', async (e) => {
+        const id = e.target.getAttribute('data-del');
+        if (!id) return;
+        if (!confirm('Delete time log?')) return;
+        const { error } = await supabase.from('time_logs').delete().eq('id', id);
+        if (error) {
+          notify(error.message, false);
+        } else {
+          notify('Deleted');
+          loadTimeLogs();
+        }
+      });
+
+      // ===== Check-ins =====
+      $("saveCheckin").onclick = async () => {
+        if (!currentUser) return notify('Not signed in', false);
+        const payload = {
+          user_id: currentUser.id,
+          mood: $("mood").value.trim() || null,
+          what_i_did: $("what").value.trim() || null,
+          blockers: $("blockers").value.trim() || null,
+          plan: $("plan").value.trim() || null,
+        };
+        const { error } = await supabase.from('checkins').insert(payload);
+        if (error) {
+          notify(error.message, false);
+        } else {
+          notify('Saved');
+          loadCheckins();
+        }
+      };
+
+      $("refreshCheckins").onclick = loadCheckins;
+
+      async function loadCheckins() {
+        if (!currentUser) return;
+        const { data, error } = await supabase
+          .from('checkins')
+          .select('*')
+          .order('date', { ascending: false })
+          .limit(30);
+        if (error) {
+          notify(error.message, false);
+          return;
+        }
+        const wrap = $("checkinList");
+        wrap.innerHTML = '';
+        (data || []).forEach((c) => {
+          const div = document.createElement('div');
+          div.className = 'p-3 rounded-xl bg-slate-800 border border-slate-700';
+          div.innerHTML = `<div class="text-sm font-semibold">${c.date}</div>
+            <div class="text-sm text-slate-300">Mood: ${c.mood || '—'}</div>
+            <div class="text-xs text-slate-400">Did: ${c.what_i_did || '—'} </div>
+            <div class="text-xs text-slate-400">Plan: ${c.plan || '—'}</div>
+            <div class="text-xs text-slate-400">Blockers: ${c.blockers || '—'}</div>`;
+          wrap.appendChild(div);
+        });
+      }
+
+      // ===== Report =====
+      async function buildReport() {
+        if (!currentUser) return;
+        const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+        const [tasks, logs, checks] = await Promise.all([
+          supabase
+            .from('tasks')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(10),
+          supabase.from('time_logs').select('*').gte('started_at', since),
+          supabase
+            .from('checkins')
+            .select('*')
+            .order('date', { ascending: false })
+            .limit(7),
+        ]);
+        const timeTotal = (logs.data || []).reduce(
+          (sum, r) =>
+            sum + (r.ended_at ? new Date(r.ended_at) - new Date(r.started_at) : 0),
+          0
+        );
+        const hours = (timeTotal / 3600000).toFixed(2);
+        $("reportBox").innerHTML = `
+          <div class="p-3 rounded-xl bg-slate-800 border border-slate-700">
+            Time this week: <span class="font-semibold">${hours} hrs</span>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-800 border border-slate-700">
+            Recent tasks: ${
+              (tasks.data || [])
+                .slice(0, 5)
+                .map((t) => t.title)
+                .join(', ') || '—'
+            }
+          </div>
+          <div class="p-3 rounded-xl bg-slate-800 border border-slate-700">
+            Last check-ins: ${
+              (checks.data || []).map((c) => c.date).join(', ') || '—'
+            }
+          </div>
+        `;
+      }
+
+      // Initial
+      supabase.auth.onAuthStateChange((_event, _session) => {
+        refreshAuthUI();
+      });
+      refreshAuthUI();
+
+      // Offline basics: queue writes (best-effort)
+      const writeQueue = [];
+      async function safeInsert(table, payload) {
+        try {
+          const { error } = await supabase.from(table).insert(payload);
+          if (error) throw error;
+        } catch (e) {
+          writeQueue.push({ table, payload });
+          notify('Saved offline — will sync later');
+        }
+      }
+      window.addEventListener('online', async () => {
+        while (writeQueue.length) {
+          const job = writeQueue.shift();
+          try {
+            await supabase.from(job.table).insert(job.payload);
+          } catch (e) {
+            console.warn('Retry failed', e);
+          }
+        }
+      });
+
+      // PWA service worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js').catch(() => {});
+        });
+      }
+
+      // Manual test scenarios:
+      // 1. Fresh user → request magic link → sign in → profile auto-created.
+      // 2. As owner → create task for yourself → change status → delete.
+      // 3. Start timer, stop timer → see new time log and delete it.
+      // 4. Submit a check-in and confirm it appears in list + report.
+      // 5. Open from Android/iOS browser → Add to Home Screen → run as PWA.
+    });
+  </script>
+
+  <!-- ===== Service Worker (save as sw.js in same folder) =====
+  self.addEventListener('install', (e)=>{
+    e.waitUntil(caches.open('trackva-v1').then(cache=> cache.addAll([
+      './',
+    ])));
+  });
+  self.addEventListener('fetch', (e)=>{
+    e.respondWith(
+      caches.match(e.request).then(res=> res || fetch(e.request).then(resp=>{
+        const copy = resp.clone();
+        caches.open('trackva-v1').then(cache=> cache.put(e.request, copy));
+        return resp;
+      }).catch(()=> res))
+    );
+  });
+  -->
+
+</body>
+</html>
